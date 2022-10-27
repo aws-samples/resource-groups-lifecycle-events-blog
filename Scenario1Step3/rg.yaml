@@ -1,0 +1,25 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Nested stacks for GLE blog - Resource Group template
+
+Parameters:
+  StackId:
+     Type: String
+     Description: 'The EC2 stack ID'
+
+Resources:
+  CloudFormationStackGroupForAnotherStack:
+    Type: "AWS::ResourceGroups::Group" 
+    Properties: 
+      Name: "GLEstack" 
+      Description: "A group that is based on CFN another stack" 
+      ResourceQuery: 
+        Type: "CLOUDFORMATION_STACK_1_0" 
+        Query: 
+          ResourceTypeFilters:
+            - "AWS::AllSupported" 
+          StackIdentifier: !Ref StackId
+
+
+
