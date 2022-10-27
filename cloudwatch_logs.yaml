@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: This template creates a Kinesis Data Streams, with the relevant role, a CloudWatch Logs destination, a Lambda function and its role for creating CloudWatch filter subscription
+
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Description: Name of the Lambda function
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    Default: CloudWatchFilterSubscriber
+  
+  LambdaRoleName:
+    Type: String
+    Description: Name of the Iam role for Lambda function
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    Default: LogGroupRole
+  
+  LambdaRolePolicyName: 
+    Type: String
+    Description: Name of the IAM policy assigned to the Lambda IAM role
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    Default: LogGrouppoRolePolicy
+
+  KinesisStreamName:
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    Description: Name of the Kinesis Data Streams
+    Type: String
+    Default: RecipientStream
+
+  KinesisRoleName:
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    Description: Name of the Iam role for Kinesis Data Streams
+    Type: String
+    Default: CWLtoKinesisRole
+
+  KinesisRolePolicyName:
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    Description: Name of the IAM policy assigned to the Kinesis IAM role
+    Type: String
+    Default: PermissionsPolicyForCWL
+
+Resources:
+  KinesisDataSream:
+    Type: AWS::Kinesis::Stream
+    Properties: 
+      Name: !Ref KinesisStreamName
+      RetentionPeriodHours: 24
+      ShardCount: 1
+    
+  KinesisIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref KinesisRoleName
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - logs.${AWS::Region}.amazonaws.com
+      Policies:
+        - PolicyName: !Ref KinesisRolePolicyName
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - kinesis:PutRecord
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/*
+          
+  LogDestination:  
+    Type: AWS::Logs::Destination
+    Properties: 
+      DestinationName: devDestination
+      RoleArn: !GetAtt KinesisIAMRole.Arn
+      TargetArn: !GetAtt KinesisDataSream.Arn
+      DestinationPolicy: >
+        {"Version" : "2012-10-17","Statement":[{"Effect": "Allow", "Principal" : {"AWS" : "${AWS::AccountId}"}, "Resource": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:destination:devDestination","Action": "logs:PutSubscriptionFilter"}]}
+
+  lambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          import boto3
+          import logging
+          
+          def lambda_handler(event, context):
+
+            cloudwatch_logs = boto3.client('logs')
+
+            # Read logGroup name from the CreateLogGroup event triggered when new log group created
+            log_group_to_subscribe = event['detail']['requestParameters']['logGroupName']
+
+            log.info(f"The name of Log Group to subscribe :{log_group_to_subscribe}")
+
+            DESTINATION_STREAM = os.environ['destination_stream']
+            ROLE_ARN= os.environ['role_arn']
+            FILTER_NAME = 'Dummy_Filter'
+            LOG_GROUP = log_group_to_subscribe
+
+            # Create a subscription filter
+            cloudwatch_logs.put_subscription_filter(
+                destinationArn=DESTINATION_STREAM,
+                filterName= FILTER_NAME,
+                filterPattern=' ',
+                logGroupName=LOG_GROUP,
+                roleArn=ROLE_ARN
+            )
+      Environment:
+        Variables:
+          destination_stream : !GetAtt KinesisDataSream.Arn
+          role_arn : !GetAtt KinesisIAMRole.Arn
+      Description: Lambda function that will receive the event and Create a subscription filter
+      FunctionName: !Ref LambdaFunctionName
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: !GetAtt lambdaIAMRole.Arn
+      Runtime: python3.8
+
+  lambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref LambdaRoleName
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyName: !Ref LambdaRolePolicyName 
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                 - logs:PutSubscriptionFilter
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:*
+              - Action:
+                  - iam:PassRole
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${LambdaRoleName}
+
+Outputs:
+  lambdaArn:
+    Value: !GetAtt lambdaFunction.Arn
+  
+
+
