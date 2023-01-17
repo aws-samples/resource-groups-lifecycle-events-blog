@@ -24,9 +24,8 @@ ec2_client = boto3.client("ec2")
 ec2_resource = boto3.resource("ec2")
 
 # Apply resource tags to EC2 instances & attached EBS volumes
-def set_ec2_instance_attached_vols_tags(ec2_instance_id, resource_tags):
+def set_ec2_instance_attached_tags(ec2_instance_id, resource_tags):
     """Applies a list of passed resource tags to the Amazon EC2 instance.
-       Also applies the same resource tags to EBS volumes attached to instance.
     Args:
         ec2_instance_id: EC2 instance identifier
         resource_tags: a list of key:string,value:string resource tag dictionaries
@@ -42,19 +41,6 @@ def set_ec2_instance_attached_vols_tags(ec2_instance_id, resource_tags):
     except botocore.exceptions.ClientError as error:
         log.error(f"Boto3 API returned error: {error}")
         log.error(f"No Tags Applied To: {ec2_instance_id}")
-        return False
-    
-    try:
-        response = ec2_client.describe_volumes(
-            Filters=[{"Name": "attachment.instance-id", "Values": [ec2_instance_id]}]
-        )
-        for volume in response.get("Volumes"):
-            ec2_vol = ec2_resource.Volume(volume["VolumeId"])
-            vol_tags = ec2_vol.create_tags(Tags=resource_tags)
-            return True
-    except botocore.exceptions.ClientError as error:
-        log.error(f"Boto3 API returned error: {error}")
-        log.error(f"No Tags Applied To: {volume['VolumeId']}")
         return False
 
 def event_parser(event):
@@ -97,7 +83,7 @@ def lambda_handler(event, context):
             ec2_instance_id = re.search('/(.+)', ec2_instance_arn)
             ec2_instance_id= ec2_instance_id.group(1)
 
-            if set_ec2_instance_attached_vols_tags(ec2_instance_id, resource_tags):
+            if set_ec2_instance_attached_tags(ec2_instance_id, resource_tags):
                 log.info("'statusCode': 200")
                 log.info(f"'Resource ID': {ec2_instance_id}")
                 log.info(f"'body': {json.dumps(resource_tags)}")
