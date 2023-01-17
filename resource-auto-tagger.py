@@ -42,6 +42,8 @@ def set_ec2_instance_attached_tags(ec2_instance_id, resource_tags):
         log.error(f"Boto3 API returned error: {error}")
         log.error(f"No Tags Applied To: {ec2_instance_id}")
         return False
+    
+    return True
 
 def event_parser(event):
     """Extract list of new EC2 instances from the event
