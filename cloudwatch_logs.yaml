@@ -58,7 +58,7 @@ Resources:
             Effect: Allow
             Principal:
               Service:
-                - logs.${AWS::Region}.amazonaws.com
+                - logs.amazonaws.com
       Policies:
         - PolicyName: !Ref KinesisRolePolicyName
           PolicyDocument:
