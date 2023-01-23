@@ -6,37 +6,11 @@ Parameters:
     Type: String
     Description: Name of the Lambda function
     AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
-    Default: CloudWatchFilterSubscriber
   
-  LambdaRoleName:
-    Type: String
-    Description: Name of the Iam role for Lambda function
-    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
-    Default: LogGroupRole
-  
-  LambdaRolePolicyName: 
-    Type: String
-    Description: Name of the IAM policy assigned to the Lambda IAM role
-    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
-    Default: LogGrouppoRolePolicy
-
   KinesisStreamName:
     AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
     Description: Name of the Kinesis Data Streams
     Type: String
-    Default: RecipientStream
-
-  KinesisRoleName:
-    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
-    Description: Name of the Iam role for Kinesis Data Streams
-    Type: String
-    Default: CWLtoKinesisRole
-
-  KinesisRolePolicyName:
-    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
-    Description: Name of the IAM policy assigned to the Kinesis IAM role
-    Type: String
-    Default: PermissionsPolicyForCWL
 
 Resources:
   KinesisDataSream:
@@ -49,7 +23,6 @@ Resources:
   KinesisIAMRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Ref KinesisRoleName
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -60,7 +33,7 @@ Resources:
               Service:
                 - logs.amazonaws.com
       Policies:
-        - PolicyName: !Ref KinesisRolePolicyName
+        - PolicyName: PermissionsPolicyForCWL 
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -86,20 +59,21 @@ Resources:
         ZipFile: |
           import boto3
           import logging
+          import re
+          import os
           
           def lambda_handler(event, context):
 
             cloudwatch_logs = boto3.client('logs')
 
-            # Read logGroup name from the CreateLogGroup event triggered when new log group created
-            log_group_to_subscribe = event['detail']['requestParameters']['logGroupName']
-
-            log.info(f"The name of Log Group to subscribe :{log_group_to_subscribe}")
+            # Read lambda function name from the event and use it for log group
+            lambda_arn = event['detail']['resources'][0]['arn']
+            log_group_to_subscribe =(re.search('function:(.+)', lambda_arn)).group(1)
 
             DESTINATION_STREAM = os.environ['destination_stream']
             ROLE_ARN= os.environ['role_arn']
             FILTER_NAME = 'Dummy_Filter'
-            LOG_GROUP = log_group_to_subscribe
+            LOG_GROUP = "/aws/lambda/" + log_group_to_subscribe
 
             # Create a subscription filter
             cloudwatch_logs.put_subscription_filter(
@@ -123,7 +97,6 @@ Resources:
   lambdaIAMRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Ref LambdaRoleName
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -134,24 +107,32 @@ Resources:
               Service:
                 - lambda.amazonaws.com
       Policies:
-        - PolicyName: !Ref LambdaRolePolicyName 
+        - PolicyName: LogGrouppoRolePolicy
           PolicyDocument:
             Version: 2012-10-17
             Statement:
               - Action:
-                 - logs:PutSubscriptionFilter
+                  - logs:PutSubscriptionFilter
                 Effect: Allow
                 Resource:
                   - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:*
               - Action:
+                  - logs:CreateLogGroup
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:*:${AWS::AccountId}:*
+              - Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/aws/lambda/${LambdaFunctionName}:*
+              - Action:
                   - iam:PassRole
                 Effect: Allow
                 Resource:
-                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${LambdaRoleName}
+                  - !GetAtt KinesisIAMRole.Arn
 
 Outputs:
   lambdaArn:
     Value: !GetAtt lambdaFunction.Arn
-  
-
-
