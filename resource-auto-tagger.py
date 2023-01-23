@@ -34,9 +34,11 @@ def set_ec2_instance_attached_tags(ec2_instance_id, resource_tags):
     Raises:
         AWS Python API "Boto3" returned client errors
     """
+
     try:
-        response = ec2_client.create_tags(
-            Resources=[ec2_instance_id], Tags=resource_tags
+        response = ec2_client.create_tags (
+            Resources=[ec2_instance_id], 
+            Tags=resource_tags
         )
     except botocore.exceptions.ClientError as error:
         log.error(f"Boto3 API returned error: {error}")
