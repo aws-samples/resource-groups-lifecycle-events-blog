@@ -6,7 +6,7 @@ Parameters:
     Type: String
     AllowedPattern: "[a-zA-Z0-9]+[a-zA-Z0-9-]+[a-zA-Z0-9]+"
     Default: resource-auto-tagger
-  
+    
   S3BucketName:
     AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
     ConstraintDescription: Bucket name can include numbers, lowercase letters, uppercase letters, periods (.), and hyphens (-). It cannot start or end with a hyphen (-).
@@ -17,18 +17,6 @@ Parameters:
     AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
     Description: File name for your lambda code with extension
     Type: String
-
-  LambdaRoleName:
-    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
-    Description: Name of the Iam role for Lambda function
-    Type: String
-    Default: Resource-auto-tagger-lambda-role
-
-  LambdaRolePolicyName:
-    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
-    Description: Name of the IAM policy assigned to the Lambda IAM role
-    Type: String
-    Default: Resource-auto-tagger-lambda-permissions-policy
 
 Resources:
   lambdaFunction:
@@ -42,12 +30,11 @@ Resources:
       Handler: !Sub ${LambdaFunctionName}.lambda_handler
       MemorySize: 128
       Role: !GetAtt lambdaIAMRole.Arn
-      Runtime: python3.8
+      Runtime: python3.9
 
   lambdaIAMRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Ref LambdaRoleName
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -58,7 +45,7 @@ Resources:
               Service:
                 - lambda.amazonaws.com
       Policies:
-        - PolicyName: !Ref LambdaRolePolicyName
+        - PolicyName: Resource-auto-tagger-lambda-permissions-policy
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -70,26 +57,20 @@ Resources:
                 Effect: Allow
                 Resource:
                   - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/*
-
               - Action:
                   - logs:PutLogEvents
                   - logs:GetLogEvents
                 Effect: Allow
                 Resource:
-                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${LambdaFunctionName}:log-stream:*
-            
-              - Action:
-                  - ec2:CreateTags
-                Effect: Allow
-                Resource: 
-                  - !Sub arn:aws:ec2:*:${AWS::AccountId}:instance/*"
-                
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*:log-stream:*
               - Action:
                   - cloudwatch:PutMetricData
                   - ec2:DescribeInstances
+                  - ec2:DescribeTags
+                  - ec2:CreateTags
                 Effect: Allow
                 Resource: "*"
-          
 
   lambdaLogGroup:
     Type: AWS::Logs::LogGroup
@@ -105,4 +86,3 @@ Outputs:
   RoleArn: 
     Description: Arn of Created Role
     Value: !GetAtt lambdaIAMRole.Arn
-
